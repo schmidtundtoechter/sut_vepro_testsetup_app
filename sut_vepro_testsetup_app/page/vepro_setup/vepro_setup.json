@@ -1,0 +1,14 @@
+{
+ "doctype": "Page",
+ "module": "sut_vepro_testsetup_app",
+ "name": "vepro_setup",
+ "page_name": "vepro_setup",
+ "system_page": 0,
+ "title": "VePro Setup",
+ "roles": [
+  {
+   "doctype": "Page Role",
+   "role": "System Manager"
+  }
+ ]
+}
