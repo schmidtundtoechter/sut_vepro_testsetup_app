@@ -21,6 +21,12 @@ Frappe-App zur Sicherung und Wiederherstellung der ERPNext-Konfiguration des VeP
 | **Unternehmen** | `backup_data/companies.json` | Alle Company-Dokumente (Grunddaten, Währung, Land, Steuer-ID, Buchungskonten) |
 | **Favicon** | `backup_data/favicon.*` + `favicon.json` | Favicon-Datei und Pfad aus den Website-Einstellungen |
 | **Workspaces** | `backup_data/workspaces.json` | Alle nicht-nativen Workspaces (kein Frappe/ERPNext-Core) |
+| **Nutzer** | `backup_data/users.json` | Alle Nutzer (außer Administrator/Guest) mit Rollen und Berechtigungen – **ohne Passwörter** |
+| **E-Mail-Konten** | `backup_data/email_accounts.json` | Alle E-Mail-Konten mit Servereinstellungen – **ohne Passwörter** |
+
+> **Passwörter werden niemals gesichert.** Nach dem Einspielen müssen E-Mail-Passwörter
+> manuell eingetragen werden. Neu angelegte Nutzer müssen ihr Passwort über
+> *„Passwort vergessen"* selbst setzen.
 
 Workspaces aus `frappe`, `erpnext`, `eu_einvoice` und `helpdesk` werden übersprungen. Alle anderen Workspaces werden gesichert – auch solche ohne Modulzuordnung (manuell im UI erstellt). Weitere auszuschließende Apps können in `_WORKSPACE_EXCLUDED_APPS` in `api.py` eingetragen werden.
 
@@ -136,10 +142,6 @@ http://d-code.localhost:8000/app/vepro_setup
 4. Die gesicherten Daten werden in ERPNext wiederhergestellt
 
 > **Achtung:** Das Einspielen überschreibt bestehende Daten ohne weitere Rückfrage.
-
-> **Passwörter werden niemals gesichert.** Nach dem Einspielen müssen E-Mail-Passwörter
-> manuell eingetragen werden. Neu angelegte Nutzer müssen ihr Passwort über
-> *„Passwort vergessen"* selbst setzen.
 
 ### Übersicht der Bereiche
 
