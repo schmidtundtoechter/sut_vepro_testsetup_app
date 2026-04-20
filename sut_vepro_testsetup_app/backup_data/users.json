@@ -1,0 +1,37 @@
+[
+  {
+    "name": "demo@example.com",
+    "first_name": "Demo",
+    "last_name": "User",
+    "full_name": "Demo User",
+    "username": "demo",
+    "language": "de",
+    "time_zone": "Europe/Berlin",
+    "user_type": "System User",
+    "enabled": 1,
+    "roles": [
+      {
+        "role": "Sales User"
+      },
+      {
+        "role": "Sales Manager"
+      },
+      {
+        "role": "Accounts User"
+      },
+      {
+        "role": "Accounts Manager"
+      },
+      {
+        "role": "Item Manager"
+      },
+      {
+        "role": "Projects User"
+      },
+      {
+        "role": "Customer"
+      }
+    ],
+    "user_permissions": []
+  }
+]

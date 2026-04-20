@@ -25,6 +25,8 @@ def get_backup_status():
 		("company", "companies.json"),
 		("favicon", "favicon.json"),
 		("workspace", "workspaces.json"),
+		("user", "users.json"),
+		("email_account", "email_accounts.json"),
 	]:
 		filepath = os.path.join(backup_path, filename)
 		if os.path.exists(filepath):
@@ -211,22 +213,32 @@ def restore_favicon():
 # Workspaces
 # ---------------------------------------------------------------------------
 
-# Apps whose workspaces are considered "native" and are not backed up.
-_NATIVE_APPS = {"frappe", "erpnext"}
+# Workspaces belonging to these apps are explicitly excluded from backups.
+# All other workspaces (including those with no module) are included.
+_WORKSPACE_EXCLUDED_APPS = {"frappe", "erpnext", "eu_einvoice", "helpdesk"}
 
 
-def _get_custom_module_names():
-	"""Returns the set of module names that belong to non-native apps."""
+def _get_excluded_module_names():
+	"""Returns module names that belong to excluded apps."""
 	all_modules = frappe.db.get_all("Module Def", fields=["name", "app_name"])
-	return {m.name for m in all_modules if m.app_name not in _NATIVE_APPS}
+	return {m.name for m in all_modules if m.app_name in _WORKSPACE_EXCLUDED_APPS}
 
 
 @frappe.whitelist()
 def backup_workspace():
-	"""Exports all non-native, non-personal Workspaces to backup_data/workspaces.json."""
+	"""Exports all non-excluded, non-personal Workspaces to backup_data/workspaces.json.
+
+	Included:
+	- Workspaces with no module (manually created in the UI)
+	- Workspaces whose module belongs to an app not in _WORKSPACE_EXCLUDED_APPS
+
+	Excluded:
+	- Personal workspaces (for_user set)
+	- Workspaces from apps listed in _WORKSPACE_EXCLUDED_APPS
+	"""
 	frappe.only_for("System Manager")
 
-	custom_modules = _get_custom_module_names()
+	excluded_modules = _get_excluded_module_names()
 
 	workspaces = frappe.db.get_all(
 		"Workspace",
@@ -237,7 +249,8 @@ def backup_workspace():
 	data = []
 	skipped = 0
 	for ws in workspaces:
-		if ws.module and ws.module not in custom_modules:
+		# Always include workspaces with no module (manually created)
+		if ws.module and ws.module in excluded_modules:
 			skipped += 1
 			continue
 		try:
@@ -251,9 +264,7 @@ def backup_workspace():
 		json.dump(data, f, indent=2, ensure_ascii=False, default=str)
 
 	return {
-		"message": _("{0} Workspaces gesichert ({1} native übersprungen)").format(
-			len(data), skipped
-		),
+		"message": _("{0} Workspaces gesichert ({1} übersprungen)").format(len(data), skipped),
 		"count": len(data),
 	}
 
@@ -286,5 +297,220 @@ def restore_workspace():
 	frappe.db.commit()
 	return {
 		"message": _("{0} Workspaces wiederhergestellt").format(restored),
+		"count": restored,
+	}
+
+
+# ---------------------------------------------------------------------------
+# Users
+# ---------------------------------------------------------------------------
+
+# System accounts that are never backed up.
+_USER_SKIP = {"Administrator", "Guest"}
+
+_USER_FIELDS = [
+	"name",
+	"first_name",
+	"last_name",
+	"full_name",
+	"username",
+	"gender",
+	"birth_date",
+	"language",
+	"time_zone",
+	"user_type",
+	"enabled",
+	"module_profile",
+	"role_profile_name",
+]
+
+
+@frappe.whitelist()
+def backup_user():
+	"""Exports all non-system Users with roles and User Permissions to backup_data/users.json."""
+	frappe.only_for("System Manager")
+
+	users = frappe.db.get_all(
+		"User",
+		fields=["name"],
+		filters={"name": ["not in", list(_USER_SKIP)]},
+	)
+	data = []
+	for u in users:
+		try:
+			doc = frappe.get_doc("User", u.name)
+			entry = {f: doc.get(f) for f in _USER_FIELDS if doc.get(f) is not None}
+			entry["roles"] = [{"role": r.role} for r in doc.roles]
+			entry["user_permissions"] = frappe.db.get_all(
+				"User Permission",
+				fields=["allow", "for_value", "apply_to_all_doctypes", "applicable_for"],
+				filters={"user": u.name},
+			)
+			data.append(entry)
+		except Exception as e:
+			frappe.log_error(f"backup_user – {u.name}: {e}")
+
+	filepath = os.path.join(get_backup_data_path(), "users.json")
+	with open(filepath, "w", encoding="utf-8") as f:
+		json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+
+	return {"message": _("{0} Nutzer gesichert").format(len(data)), "count": len(data)}
+
+
+@frappe.whitelist()
+def restore_user():
+	"""Restores Users (roles, permissions) from backup_data/users.json.
+
+	Passwords are never stored and remain unchanged for existing users.
+	New users are inserted without a password – they must use "Forgot Password".
+	"""
+	frappe.only_for("System Manager")
+	filepath = os.path.join(get_backup_data_path(), "users.json")
+	if not os.path.exists(filepath):
+		frappe.throw(_("Keine Nutzer-Sicherung gefunden."))
+
+	with open(filepath, "r", encoding="utf-8") as f:
+		data = json.load(f)
+
+	restored = 0
+	for user_data in data:
+		email = user_data.get("name")
+		if not email or email in _USER_SKIP:
+			continue
+		try:
+			permissions = user_data.pop("user_permissions", [])
+			roles = user_data.pop("roles", [])
+
+			if frappe.db.exists("User", email):
+				doc = frappe.get_doc("User", email)
+				for key, value in user_data.items():
+					if key == "name":
+						continue
+					try:
+						setattr(doc, key, value)
+					except Exception:
+						pass
+				doc.roles = []
+				for r in roles:
+					doc.append("roles", {"role": r["role"]})
+				doc.save(ignore_permissions=True)
+			else:
+				doc = frappe.get_doc({"doctype": "User", **user_data})
+				doc.flags.ignore_password_policy = True
+				doc.send_welcome_email = 0
+				for r in roles:
+					doc.append("roles", {"role": r["role"]})
+				doc.insert(ignore_permissions=True)
+
+			# Restore User Permissions
+			frappe.db.delete("User Permission", {"user": email})
+			for perm in permissions:
+				frappe.get_doc(
+					{
+						"doctype": "User Permission",
+						"user": email,
+						"allow": perm.get("allow"),
+						"for_value": perm.get("for_value"),
+						"apply_to_all_doctypes": perm.get("apply_to_all_doctypes"),
+						"applicable_for": perm.get("applicable_for"),
+					}
+				).insert(ignore_permissions=True)
+
+			restored += 1
+		except Exception as e:
+			frappe.log_error(f"restore_user – {email}: {e}")
+
+	frappe.db.commit()
+	return {
+		"message": _("{0} Nutzer wiederhergestellt (Passwörter unverändert)").format(restored),
+		"count": restored,
+	}
+
+
+# ---------------------------------------------------------------------------
+# Email Accounts
+# ---------------------------------------------------------------------------
+
+# Sensitive fields that are never written to the backup file.
+_EMAIL_ACCOUNT_SENSITIVE = {"password", "smtp_password", "api_key", "api_secret", "connected_user"}
+
+
+@frappe.whitelist()
+def backup_email_account():
+	"""Exports all Email Accounts (without passwords) to backup_data/email_accounts.json."""
+	frappe.only_for("System Manager")
+
+	accounts = frappe.db.get_all("Email Account", fields=["name"])
+	data = []
+	for acc in accounts:
+		try:
+			doc = frappe.get_doc("Email Account", acc.name)
+			entry = doc.as_dict()
+			for field in _EMAIL_ACCOUNT_SENSITIVE:
+				entry.pop(field, None)
+			data.append(entry)
+		except Exception as e:
+			frappe.log_error(f"backup_email_account – {acc.name}: {e}")
+
+	filepath = os.path.join(get_backup_data_path(), "email_accounts.json")
+	with open(filepath, "w", encoding="utf-8") as f:
+		json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+
+	return {
+		"message": _("{0} E-Mail-Konten gesichert (ohne Passwörter)").format(len(data)),
+		"count": len(data),
+	}
+
+
+@frappe.whitelist()
+def restore_email_account():
+	"""Restores Email Accounts from backup_data/email_accounts.json.
+
+	Passwords are not stored in the backup and must be re-entered manually after restore.
+	"""
+	frappe.only_for("System Manager")
+	filepath = os.path.join(get_backup_data_path(), "email_accounts.json")
+	if not os.path.exists(filepath):
+		frappe.throw(_("Keine E-Mail-Konto-Sicherung gefunden."))
+
+	with open(filepath, "r", encoding="utf-8") as f:
+		data = json.load(f)
+
+	restored = 0
+	for acc_data in data:
+		name = acc_data.get("name") or acc_data.get("email_account_name")
+		if not name:
+			continue
+		try:
+			# Remove metadata and sensitive fields before writing
+			clean = {
+				k: v
+				for k, v in acc_data.items()
+				if k not in _EMAIL_ACCOUNT_SENSITIVE
+				and k not in ("creation", "modified", "modified_by", "owner", "docstatus", "idx")
+			}
+			if frappe.db.exists("Email Account", name):
+				doc = frappe.get_doc("Email Account", name)
+				for key, value in clean.items():
+					if key in ("name", "doctype"):
+						continue
+					if value is not None:
+						try:
+							setattr(doc, key, value)
+						except Exception:
+							pass
+				doc.save(ignore_permissions=True)
+			else:
+				doc = frappe.get_doc(clean)
+				doc.insert(ignore_permissions=True)
+			restored += 1
+		except Exception as e:
+			frappe.log_error(f"restore_email_account – {name}: {e}")
+
+	frappe.db.commit()
+	return {
+		"message": _(
+			"{0} E-Mail-Konten wiederhergestellt (Passwörter müssen manuell eingetragen werden)"
+		).format(restored),
 		"count": restored,
 	}

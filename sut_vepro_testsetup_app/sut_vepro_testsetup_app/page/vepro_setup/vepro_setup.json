@@ -3,6 +3,7 @@
  "module": "sut_vepro_testsetup_app",
  "name": "vepro_setup",
  "page_name": "vepro_setup",
+ "standard": "Yes",
  "system_page": 0,
  "title": "VePro Setup",
  "roles": [

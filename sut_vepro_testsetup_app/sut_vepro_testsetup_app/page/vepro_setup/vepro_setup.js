@@ -40,6 +40,18 @@ class VeproSetupPage {
 							"fa-th-large",
 							"Sichert alle Workspaces, die nicht zu Frappe oder ERPNext gehören (z. B. eigene und angepasste Workspaces)."
 						)}
+						${this.html_card(
+							"user",
+							"Nutzer (User)",
+							"fa-users",
+							"Sichert alle Nutzer (außer Administrator und Guest) mit ihren Rollen und Berechtigungen. Passwörter werden nicht gesichert."
+						)}
+						${this.html_card(
+							"email_account",
+							"E-Mail-Konten (Email Account)",
+							"fa-envelope",
+							"Sichert alle E-Mail-Konten mit Servereinstellungen. Passwörter werden aus Sicherheitsgründen nicht gesichert und müssen nach dem Einspielen manuell eingetragen werden."
+						)}
 					</div>
 				</div>
 			</div>
@@ -73,10 +85,17 @@ class VeproSetupPage {
 						wiederherzustellen.
 					</li>
 				</ol>
-				<div class="alert alert-warning small mb-0">
+				<div class="alert alert-warning small mb-2">
 					<i class="fa fa-exclamation-triangle mr-1"></i>
 					<strong>Achtung:</strong> Das Einspielen überschreibt bestehende
 					Einstellungen ohne weitere Rückfrage.
+				</div>
+				<div class="alert alert-danger small mb-0">
+					<i class="fa fa-lock mr-1"></i>
+					<strong>Passwörter werden niemals gesichert.</strong>
+					Nach dem Einspielen müssen E-Mail-Passwörter manuell eingetragen werden.
+					Neu angelegte Nutzer müssen ihr Passwort über <em>„Passwort vergessen"</em>
+					selbst setzen.
 				</div>
 			</div>
 		`;
